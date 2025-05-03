@@ -1,63 +1,62 @@
-import express from "express";
-import cors from "cors";
-import axios from "axios";
+import express from 'express';
+import cors from 'cors';
+import axios from 'axios';
 
 const app = express();
 app.use(cors());
 app.use(express.json());
 
-// Configuração para Render
-const PORT = process.env.PORT || 10000; // Ajustado para 10000
+// Configurações otimizadas para Render
+const PORT = process.env.PORT || 10000;
+const HF_TOKEN = process.env.HF_TOKEN;
+const MODEL = 'facebook/blenderbot-400M-distill'; // Modelo mais leve
 
-// Modelo mais leve (Blenderbot)
-const MODEL_URL = "https://api-inference.huggingface.co/models/facebook/blenderbot-400M-distill";
-
-// Health Check
-app.get("/", (req, res) => {
-  res.status(200).send("API Kyntharux Online");
+// Middleware de log
+app.use((req, _, next) => {
+    console.log(`[${new Date().toISOString()}] ${req.method} ${req.path}`);
+    next();
 });
 
-app.post("/api/message", async (req, res) => {
-  if (!req.body.message) {
-    return res.status(400).json({ error: "Mensagem não fornecida" });
-  }
+// Health Check
+app.get('/', (_, res) => res.status(200).json({ status: 'ready' }));
 
-  try {
-    console.log("Processando mensagem:", req.body.message.substring(0, 50) + "...");
-    
-    const response = await axios.post(
-      MODEL_URL,
-      { inputs: req.body.message },
-      {
-        headers: { Authorization: `Bearer ${process.env.HF_TOKEN}` },
-        timeout: 15000 // 15 segundos (dentro do limite do Render)
-      }
-    );
+// Endpoint otimizado
+app.post('/api/message', async (req, res) => {
+    try {
+        const { message } = req.body;
+        
+        if (!message) {
+            return res.status(400).json({ error: 'Message is required' });
+        }
 
-    const reply = response.data?.generated_text || "Pode reformular a pergunta?";
-    res.json({ reply: reply.trim() });
+        console.log('Processing:', message.substring(0, 50));
+        
+        const response = await axios.post(
+            `https://api-inference.huggingface.co/models/${MODEL}`,
+            { inputs: message },
+            {
+                headers: { Authorization: `Bearer ${HF_TOKEN}` },
+                timeout: 10000 // 10s timeout
+            }
+        );
 
-  } catch (err) {
-    console.error("ERRO:", {
-      message: err.message,
-      code: err.code,
-      response: err.response?.data
-    });
+        const reply = response.data?.generated_text || 'Não entendi, pode repetir?';
+        res.json({ reply: reply.trim() });
 
-    // Resposta alternativa em caso de erro
-    const fallbackReplies = [
-      "Estou processando outra solicitação, tente novamente em instantes!",
-      "Estou aprendendo ainda, pode repetir de outra forma?",
-      "No momento estou ocupada, volte mais tarde!"
-    ];
-    
-    res.status(200).json({  // Retorna 200 mesmo com erro para não quebrar o front
-      reply: fallbackReplies[Math.floor(Math.random() * fallbackReplies.length)]
-    });
-  }
+    } catch (error) {
+        console.error('Full error:', {
+            message: error.message,
+            code: error.code,
+            response: error.response?.data
+        });
+        
+        res.status(200).json({ // Sempre retorna 200 para o frontend
+            reply: 'Estou tendo dificuldades técnicas. Tente novamente mais tarde.'
+        });
+    }
 });
 
 app.listen(PORT, () => {
-  console.log(`Servidor rodando na porta ${PORT}`);
-  console.log(`Modo: ${process.env.NODE_ENV || 'development'}`);
+    console.log(`Server running on port ${PORT}`);
+    console.log(`Model: ${MODEL}`);
 });
