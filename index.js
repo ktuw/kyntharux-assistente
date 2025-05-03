@@ -6,54 +6,58 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
-// Configure isso como variável de ambiente no Render
-const HF_TOKEN = process.env.HF_TOKEN || "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";
+// Configuração para Render
+const PORT = process.env.PORT || 10000; // Ajustado para 10000
 
-// Mude para um modelo mais leve e rápido
+// Modelo mais leve (Blenderbot)
 const MODEL_URL = "https://api-inference.huggingface.co/models/facebook/blenderbot-400M-distill";
+
+// Health Check
+app.get("/", (req, res) => {
+  res.status(200).send("API Kyntharux Online");
+});
 
 app.post("/api/message", async (req, res) => {
   if (!req.body.message) {
-    return res.status(400).json({ error: "O campo 'message' é obrigatório" });
+    return res.status(400).json({ error: "Mensagem não fornecida" });
   }
 
   try {
-    console.log("Enviando para Hugging Face:", req.body.message);
+    console.log("Processando mensagem:", req.body.message.substring(0, 50) + "...");
     
     const response = await axios.post(
       MODEL_URL,
       { inputs: req.body.message },
       {
-        headers: { Authorization: `Bearer ${HF_TOKEN}` },
-        timeout: 10000 // 10 segundos timeout
+        headers: { Authorization: `Bearer ${process.env.HF_TOKEN}` },
+        timeout: 15000 // 15 segundos (dentro do limite do Render)
       }
     );
 
-    console.log("Resposta do Hugging Face:", response.data);
-    
-    // Processamento diferente para blenderbot
-    const text = response.data?.generated_text || 
-                response.data?.conversation?.generated_responses?.[0] || 
-                "Desculpe, não entendi sua mensagem.";
-    
-    res.json({ reply: text.trim() });
-    
+    const reply = response.data?.generated_text || "Pode reformular a pergunta?";
+    res.json({ reply: reply.trim() });
+
   } catch (err) {
-    console.error("Erro completo:", {
+    console.error("ERRO:", {
       message: err.message,
-      response: err.response?.data,
-      stack: err.stack
+      code: err.code,
+      response: err.response?.data
     });
+
+    // Resposta alternativa em caso de erro
+    const fallbackReplies = [
+      "Estou processando outra solicitação, tente novamente em instantes!",
+      "Estou aprendendo ainda, pode repetir de outra forma?",
+      "No momento estou ocupada, volte mais tarde!"
+    ];
     
-    res.status(500).json({ 
-      error: "Erro ao processar sua mensagem",
-      details: process.env.NODE_ENV === 'development' ? err.message : undefined
+    res.status(200).json({  // Retorna 200 mesmo com erro para não quebrar o front
+      reply: fallbackReplies[Math.floor(Math.random() * fallbackReplies.length)]
     });
   }
 });
 
-const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
   console.log(`Servidor rodando na porta ${PORT}`);
+  console.log(`Modo: ${process.env.NODE_ENV || 'development'}`);
 });
-
