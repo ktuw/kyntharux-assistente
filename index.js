@@ -1,44 +1,37 @@
-// Importando as dependências necessárias
-const express = require('express');
-const axios = require('axios');
-require('dotenv').config(); // Para carregar variáveis de ambiente do arquivo .env
+const express = require("express");
+const cors = require("cors");
+const axios = require("axios");
 
-// Inicializando o servidor Express
 const app = express();
-const port = process.env.PORT || 3000;
+app.use(cors());
+app.use(express.json());
 
-// Obtendo o token de acesso da Hugging Face de uma variável de ambiente
-const hfToken = process.env.HF_TOKEN;
+const HF_TOKEN = "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";
+const MODEL_URL = "https://api-inference.huggingface.co/models/bigscience/bloom";
 
-// Rota de exemplo
-app.get('/', (req, res) => {
-  res.send('Assistente Kyntharux funcionando!');
-});
+app.post("/api/message", async (req, res) => {
+  const userMessage = req.body.message;
 
-// Exemplo de rota para usar o token
-app.get('/api/predict', async (req, res) => {
   try {
-    // Fazendo uma requisição à Hugging Face API com o token
     const response = await axios.post(
-      'https://api-inference.huggingface.co/models/your-model',
-      {
-        // Corpo da requisição, como entradas do modelo
-        inputs: 'Exemplo de input'
-      },
+      MODEL_URL,
+      { inputs: userMessage },
       {
         headers: {
-          Authorization: `Bearer ${hfToken}`
-        }
+          Authorization: `Bearer ${HF_TOKEN}`,
+        },
       }
     );
-    res.json(response.data);
-  } catch (error) {
-    console.error('Erro ao acessar Hugging Face API:', error);
-    res.status(500).send('Erro ao acessar Hugging Face');
+
+    const text = response.data[0]?.generated_text || "Desculpa, não entendi.";
+    res.json({ reply: text });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Erro ao falar com o modelo." });
   }
 });
 
-// Iniciando o servidor
-app.listen(port, () => {
-  console.log(`Servidor rodando na porta ${port}`);
+app.listen(process.env.PORT || 3000, () => {
+  console.log("Servidor rodando na porta 3000");
 });
+
