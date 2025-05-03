@@ -2,13 +2,11 @@ const express = require("express");
 const cors = require("cors");
 const axios = require("axios");
 
-require("dotenv").config(); // para usar variáveis de ambiente a partir de um .env
-
 const app = express();
 app.use(cors());
 app.use(express.json());
 
-const HF_TOKEN = process.env.HF_TOKEN;
+const HF_TOKEN = "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";
 const MODEL_URL = "https://api-inference.huggingface.co/models/bigscience/bloom";
 
 app.post("/api/message", async (req, res) => {
@@ -25,19 +23,16 @@ app.post("/api/message", async (req, res) => {
       }
     );
 
-    const result = response.data;
-
-    const reply = result?.[0]?.generated_text || "Desculpa, não entendi.";
-    res.json({ reply });
+    const text = response.data[0]?.generated_text || "Desculpa, não entendi.";
+    res.json({ reply: text });
   } catch (err) {
-    console.error("Erro na requisição:", err.response?.data || err.message);
-    res.status(500).json({ error: "Erro ao comunicar com o modelo da IA." });
+    console.error(err);
+    res.status(500).json({ error: "Erro ao falar com o modelo." });
   }
 });
 
-const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => {
-  console.log(`Servidor rodando na porta ${PORT}`);
+app.listen(process.env.PORT || 3000, () => {
+  console.log("Servidor rodando na porta 3000");
 });
 
 
