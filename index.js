@@ -1,3 +1,4 @@
+
 import express from 'express';
 import axios from 'axios';
 import cors from 'cors';
@@ -9,77 +10,81 @@ app.use(express.json());
 const PORT = process.env.PORT || 10000;
 const HF_TOKEN = process.env.HF_TOKEN;
 
-// Cache de respostas
-const responseCache = new Map();
+// Middleware de log para debug
+app.use((req, res, next) => {
+  console.log(`[${new Date().toISOString()}] ${req.method} ${req.path}`);
+  next();
+});
 
-// Banco de dados de respostas pré-definidas
-const predefinedResponses = {
-  "qual é o seu nome?": "Me chamo Kyntharux, sua assistente virtual!",
-  "quem te criou?": "Fui desenvolvida pela equipe de inovação educacional!",
-  "oi": "Olá! Como posso te ajudar hoje? 😊",
-  "como você está?": "Estou funcionando perfeitamente, obrigada!",
-  "o que você faz?": "Respondo perguntas e ajudo com informações educacionais"
-};
+// Health Check
+app.get('/', (req, res) => {
+  res.json({
+    status: 'online',
+    endpoints: {
+      POST: '/api/message',
+      GET: ['/', '/health']
+    },
+    uptime: process.uptime()
+  });
+});
 
+// Endpoint POST corrigido
 app.post('/api/message', async (req, res) => {
-  const { message } = req.body;
-  
-  // 1. Verifica se está no cache
-  if (responseCache.has(message)) {
-    return res.json({ 
-      reply: responseCache.get(message),
-      cached: true 
-    });
-  }
-
-  // 2. Verifica respostas pré-definidas
-  const lowerMessage = message.toLowerCase();
-  if (predefinedResponses[lowerMessage]) {
-    responseCache.set(message, predefinedResponses[lowerMessage]);
-    return res.json({ 
-      reply: predefinedResponses[lowerMessage],
-      static: true 
-    });
-  }
-
-  // 3. Tenta chamar a API (com fallback)
   try {
+    // Verifica se o corpo da requisição está correto
+    if (!req.body || !req.body.message) {
+      return res.status(400).json({ 
+        error: "Formato inválido",
+        example: { "message": "sua pergunta aqui" }
+      });
+    }
+
+    // Resposta simulada para teste - REMOVA quando funcionar
+    const testResponses = {
+      "qual é o seu nome?": "Me chamo Kyntharux!",
+      "oi": "Olá! Como posso ajudar?",
+      "como você está?": "Estou funcionando bem!"
+    };
+    
+    const lowerMessage = req.body.message.toLowerCase();
+    const reply = testResponses[lowerMessage] || "Mensagem recebida com sucesso!";
+    
+    return res.json({ reply });
+
+    // REMOVA O BLOCO ACIMA E DESCOMENTE O ABAIXO QUANDO TESTAR
+    /*
     const response = await axios.post(
       'https://api-inference.huggingface.co/models/facebook/blenderbot-400M-distill',
-      { inputs: message },
+      { inputs: req.body.message },
       {
         headers: { Authorization: `Bearer ${HF_TOKEN}` },
-        timeout: 5000 // Timeout curto para free tier
+        timeout: 8000
       }
     );
-
-    const reply = response.data?.generated_text || "Pode reformular a pergunta?";
-    responseCache.set(message, reply);
     
+    const reply = response.data?.generated_text || "Não entendi, pode repetir?";
     return res.json({ reply });
+    */
 
   } catch (error) {
-    console.error('API Error:', error.message);
-    
-    // Fallback inteligente
-    const fallbacks = [
-      "Estou processando sua pergunta...",
-      "Vamos tentar de outra forma?",
-      "No momento estou com recursos limitados"
-    ];
-    const reply = fallbacks[Math.floor(Math.random() * fallbacks.length)];
-    
-    responseCache.set(message, reply);
-    return res.json({ reply });
+    console.error('Error:', error);
+    return res.status(500).json({
+      error: "Erro interno",
+      message: error.message
+    });
   }
 });
 
-// Keep-alive para prevenir inatividade
-setInterval(() => {
-  axios.get(`https://${process.env.RENDER_EXTERNAL_URL || `localhost:${PORT}`}`)
-    .catch(() => {});
-}, 4 * 60 * 1000); // Ping a cada 4 minutos
+// Endpoint alternativo para teste GET
+app.get('/api/message', (req, res) => {
+  res.status(405).json({
+    error: "Método não permitido",
+    message: "Use POST para enviar mensagens",
+    example: "curl -X POST /api/message -H 'Content-Type: application/json' -d '{\"message\":\"texto\"}'"
+  });
+});
 
 app.listen(PORT, () => {
-  console.log(`Servidor otimizado rodando na porta ${PORT}`);
+  console.log(`Servidor rodando na porta ${PORT}`);
+  console.log(`Teste com: curl -X POST http://localhost:${PORT}/api/message -d '{"message":"teste"}' -H "Content-Type: application/json"`);
 });
