@@ -7,38 +7,53 @@ app.use(cors());
 app.use(express.json());
 
 const PORT = process.env.PORT || 10000;
-const HF_TOKEN = process.env.HF_TOKEN;
+const HF_TOKEN = process.env.HF_TOKEN || 'seu_token_aqui'; // Remova em produção
 const MODEL = 'facebook/blenderbot-400M-distill';
 
-// Health Check
+// Health Check melhorado
 app.get('/', (_, res) => res.json({ 
   status: 'ready',
   model: MODEL,
-  timestamp: new Date().toISOString() 
+  hf_status: 'https://api-inference.huggingface.co/status',
+  uptime: process.uptime()
 }));
 
-// Endpoint otimizado
+// Middleware de log
+app.use((req, res, next) => {
+  console.log(`[${new Date().toISOString()}] ${req.method} ${req.path}`);
+  next();
+});
+
+// Endpoint totalmente otimizado para BlenderBot
 app.post('/api/message', async (req, res) => {
-  const fallback = () => {
-    const replies = [
-      "Estou processando sua solicitação...",
-      "Vamos tentar novamente?",
-      "Estou em treinamento, tente mais tarde!"
-    ];
-    return replies[Math.floor(Math.random() * replies.length)];
-  };
+  const fallbackReplies = [
+    "Estou processando isso... um momento!",
+    "Vamos tentar de outra forma?",
+    "Estou melhorando minhas habilidades, tente novamente mais tarde!"
+  ];
 
   try {
     const { message } = req.body;
     
-    if (!message) return res.json({ reply: "Por favor, envie uma mensagem válida" });
+    // Validação robusta
+    if (!message || typeof message !== 'string' || message.trim().length === 0) {
+      return res.status(400).json({ 
+        error: "Mensagem inválida",
+        reply: "Por favor, envie uma mensagem válida"
+      });
+    }
 
-    const hfResponse = await axios.post(
+    console.log(`Processando mensagem: "${message.substring(0, 50)}${message.length > 50 ? '...' : ''}"`);
+
+    // Formato específico para BlenderBot
+    const response = await axios.post(
       `https://api-inference.huggingface.co/models/${MODEL}`,
       {
         inputs: {
           text: message,
-          conversation_id: `kyntharux_${Date.now()}`
+          conversation_id: `kyntharux_${Date.now()}`,
+          past_user_inputs: [],
+          generated_responses: []
         }
       },
       {
@@ -46,27 +61,63 @@ app.post('/api/message', async (req, res) => {
           Authorization: `Bearer ${HF_TOKEN}`,
           'Content-Type': 'application/json'
         },
-        timeout: 8000
+        timeout: 10000 // 10 segundos
       }
     );
 
-    const reply = hfResponse.data?.conversation?.generated_responses?.[0] || 
-                 hfResponse.data?.generated_text ||
-                 fallback();
+    console.log('Resposta completa:', JSON.stringify(response.data, null, 2));
 
-    return res.json({ reply: reply.trim() });
+    // Extração da resposta para BlenderBot
+    const reply = response.data?.conversation?.generated_responses?.[0] || 
+                 response.data?.generated_text ||
+                 fallbackReplies[Math.floor(Math.random() * fallbackReplies.length)];
+
+    return res.json({ 
+      reply: reply.trim(),
+      model: MODEL,
+      timestamp: new Date().toISOString()
+    });
 
   } catch (error) {
-    console.error('API Error:', {
+    console.error('Erro detalhado:', {
       message: error.message,
       code: error.code,
-      response: error.response?.data
+      response: error.response?.data,
+      stack: process.env.NODE_ENV !== 'production' ? error.stack : undefined
     });
-    return res.json({ reply: fallback() });
+
+    return res.status(200).json({ // Mantém status 200 para o frontend
+      reply: fallbackReplies[Math.floor(Math.random() * fallbackReplies.length)],
+      error: process.env.NODE_ENV !== 'production' ? error.message : undefined
+    });
+  }
+});
+
+// Rota para verificar o token da Hugging Face
+app.get('/api/check-token', async (_, res) => {
+  try {
+    const response = await axios.get(
+      'https://api-inference.huggingface.co/status',
+      {
+        headers: { Authorization: `Bearer ${HF_TOKEN}` }
+      }
+    );
+    res.json({ 
+      valid: true,
+      scopes: response.data.scopes,
+      model_status: response.data.models[MODEL] 
+    });
+  } catch (error) {
+    res.status(401).json({ 
+      valid: false,
+      error: error.response?.data?.error || error.message 
+    });
   }
 });
 
 app.listen(PORT, () => {
-  console.log(`Server ready on port ${PORT}`);
-  console.log(`Using model: ${MODEL}`);
+  console.log(`🟢 Servidor rodando na porta ${PORT}`);
+  console.log(`🔍 Modelo: ${MODEL}`);
+  console.log(`🔗 Health Check: http://localhost:${PORT}/`);
+  console.log(`🔗 Teste de Token: http://localhost:${PORT}/api/check-token`);
 });
