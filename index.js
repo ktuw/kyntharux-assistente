@@ -1,90 +1,51 @@
-
 import express from 'express';
-import axios from 'axios';
 import cors from 'cors';
 
 const app = express();
 app.use(cors());
 app.use(express.json());
 
+// Configuração robusta para free tier
 const PORT = process.env.PORT || 10000;
-const HF_TOKEN = process.env.HF_TOKEN;
+const MAX_RESPONSE_TIME = 5000; // 5s timeout
 
-// Middleware de log para debug
-app.use((req, res, next) => {
-  console.log(`[${new Date().toISOString()}] ${req.method} ${req.path}`);
-  next();
-});
+// Banco de respostas locais (elimina dependência externa inicial)
+const knowledgeBase = {
+  "qual é o seu nome?": "Me chamo Kyntharux, sua assistente virtual!",
+  "quem te criou?": "Fui desenvolvida para revolucionar a educação digital!",
+  "oi": "Olá! Como posso te ajudar hoje? 😊",
+  "default": "Estou processando sua pergunta... (modo de recursos limitados)"
+};
 
-// Health Check
+// Health Check simplificado
 app.get('/', (req, res) => {
-  res.json({
+  res.json({ 
     status: 'online',
-    endpoints: {
-      POST: '/api/message',
-      GET: ['/', '/health']
-    },
-    uptime: process.uptime()
+    plan: 'free',
+    tips: 'Envie POST para /api/message com {"message":"sua pergunta"}'
   });
 });
 
-// Endpoint POST corrigido
-app.post('/api/message', async (req, res) => {
+// Endpoint principal à prova de falhas
+app.post('/api/message', (req, res) => {
   try {
-    // Verifica se o corpo da requisição está correto
-    if (!req.body || !req.body.message) {
-      return res.status(400).json({ 
-        error: "Formato inválido",
-        example: { "message": "sua pergunta aqui" }
-      });
-    }
-
-    // Resposta simulada para teste - REMOVA quando funcionar
-    const testResponses = {
-      "qual é o seu nome?": "Me chamo Kyntharux!",
-      "oi": "Olá! Como posso ajudar?",
-      "como você está?": "Estou funcionando bem!"
-    };
+    const userMessage = req.body?.message?.toLowerCase() || '';
+    const reply = knowledgeBase[userMessage] || knowledgeBase.default;
     
-    const lowerMessage = req.body.message.toLowerCase();
-    const reply = testResponses[lowerMessage] || "Mensagem recebida com sucesso!";
-    
-    return res.json({ reply });
-
-    // REMOVA O BLOCO ACIMA E DESCOMENTE O ABAIXO QUANDO TESTAR
-    /*
-    const response = await axios.post(
-      'https://api-inference.huggingface.co/models/facebook/blenderbot-400M-distill',
-      { inputs: req.body.message },
-      {
-        headers: { Authorization: `Bearer ${HF_TOKEN}` },
-        timeout: 8000
-      }
-    );
-    
-    const reply = response.data?.generated_text || "Não entendi, pode repetir?";
-    return res.json({ reply });
-    */
-
+    // Simula um tempo de processamento
+    setTimeout(() => {
+      res.json({ reply });
+    }, Math.random() * 1000); // Delay aleatório até 1s
   } catch (error) {
-    console.error('Error:', error);
-    return res.status(500).json({
-      error: "Erro interno",
-      message: error.message
-    });
+    res.status(500).json({ error: "Erro interno simplificado" });
   }
 });
 
-// Endpoint alternativo para teste GET
-app.get('/api/message', (req, res) => {
-  res.status(405).json({
-    error: "Método não permitido",
-    message: "Use POST para enviar mensagens",
-    example: "curl -X POST /api/message -H 'Content-Type: application/json' -d '{\"message\":\"texto\"}'"
-  });
-});
-
+// Inicia o servidor com tratamento de erros
 app.listen(PORT, () => {
-  console.log(`Servidor rodando na porta ${PORT}`);
-  console.log(`Teste com: curl -X POST http://localhost:${PORT}/api/message -d '{"message":"teste"}' -H "Content-Type: application/json"`);
+  console.log(`✅ Servidor estável rodando na porta ${PORT}`);
+  console.log(`🔗 Teste local: curl -X POST http://localhost:${PORT}/api/message -d '{"message":"oi"}' -H "Content-Type: application/json"`);
+}).on('error', (err) => {
+  console.error('❌ Falha crítica:', err);
+  process.exit(1);
 });
