@@ -8,93 +8,78 @@ app.use(express.json());
 
 const PORT = process.env.PORT || 10000;
 const HF_TOKEN = process.env.HF_TOKEN;
-const MODEL = 'facebook/blenderbot-400M-distill';
 
-// Cache simples em memória
-const messageCache = new Map();
+// Cache de respostas
+const responseCache = new Map();
 
-// Health Check otimizado para free tier
-app.get('/', (req, res) => {
-  res.json({
-    status: 'ready',
-    plan: 'free',
-    warning: 'Server may spin down after 15min inactivity',
-    uptime: process.uptime()
-  });
-});
+// Banco de dados de respostas pré-definidas
+const predefinedResponses = {
+  "qual é o seu nome?": "Me chamo Kyntharux, sua assistente virtual!",
+  "quem te criou?": "Fui desenvolvida pela equipe de inovação educacional!",
+  "oi": "Olá! Como posso te ajudar hoje? 😊",
+  "como você está?": "Estou funcionando perfeitamente, obrigada!",
+  "o que você faz?": "Respondo perguntas e ajudo com informações educacionais"
+};
 
-// Endpoint ultra-otimizado
 app.post('/api/message', async (req, res) => {
   const { message } = req.body;
   
-  // Respostas pré-definidas para evitar chamadas externas
-  const staticResponses = {
-    "qual é o seu nome?": "Me chamo Kyntharux! Sou sua assistente virtual.",
-    "como você está?": "Estou funcionando bem, obrigada! E você?",
-    "oi": "Olá! Como posso te ajudar hoje?",
-    "quem te criou?": "Fui desenvolvida para ajudar nos projetos educacionais da sua equipe!"
-  };
-
-  // 1. Verifica cache
-  if (messageCache.has(message)) {
+  // 1. Verifica se está no cache
+  if (responseCache.has(message)) {
     return res.json({ 
-      reply: messageCache.get(message),
+      reply: responseCache.get(message),
       cached: true 
     });
   }
 
-  // 2. Respostas estáticas
+  // 2. Verifica respostas pré-definidas
   const lowerMessage = message.toLowerCase();
-  if (staticResponses[lowerMessage]) {
-    messageCache.set(message, staticResponses[lowerMessage]);
+  if (predefinedResponses[lowerMessage]) {
+    responseCache.set(message, predefinedResponses[lowerMessage]);
     return res.json({ 
-      reply: staticResponses[lowerMessage],
+      reply: predefinedResponses[lowerMessage],
       static: true 
     });
   }
 
-  // 3. Se não tiver resposta pronta, usa fallback
-  const fallbackReplies = [
-    "Vamos conversar sobre algo específico?",
-    "Estou processando sua pergunta...",
-    "No momento estou com recursos limitados. Podemos tentar mais tarde?",
-    "Que tal perguntar de outra forma?"
-  ];
-
-  // 4. Tenta chamar a API só se absolutamente necessário
+  // 3. Tenta chamar a API (com fallback)
   try {
-    const start = Date.now();
     const response = await axios.post(
-      `https://api-inference.huggingface.co/models/${MODEL}`,
+      'https://api-inference.huggingface.co/models/facebook/blenderbot-400M-distill',
       { inputs: message },
       {
         headers: { Authorization: `Bearer ${HF_TOKEN}` },
-        timeout: 5000 // Timeout reduzido
+        timeout: 5000 // Timeout curto para free tier
       }
     );
 
-    const reply = response.data?.generated_text || fallbackReplies[0];
-    messageCache.set(message, reply); // Armazena no cache
+    const reply = response.data?.generated_text || "Pode reformular a pergunta?";
+    responseCache.set(message, reply);
     
-    return res.json({
-      reply,
-      processingTime: `${Date.now() - start}ms`
-    });
+    return res.json({ reply });
 
   } catch (error) {
-    console.log('API Error (using fallback):', error.message);
-    const randomFallback = fallbackReplies[Math.floor(Math.random() * fallbackReplies.length)];
-    messageCache.set(message, randomFallback);
-    return res.json({ reply: randomFallback });
+    console.error('API Error:', error.message);
+    
+    // Fallback inteligente
+    const fallbacks = [
+      "Estou processando sua pergunta...",
+      "Vamos tentar de outra forma?",
+      "No momento estou com recursos limitados"
+    ];
+    const reply = fallbacks[Math.floor(Math.random() * fallbacks.length)];
+    
+    responseCache.set(message, reply);
+    return res.json({ reply });
   }
 });
 
-// Keep-alive para prevenir spin down
+// Keep-alive para prevenir inatividade
 setInterval(() => {
-  axios.get(`https://kyntharux-assistente-1.onrender.com`)
-    .catch(() => console.log('Keep-alive ping'));
-}, 5 * 60 * 1000); // 5 minutos
+  axios.get(`https://${process.env.RENDER_EXTERNAL_URL || `localhost:${PORT}`}`)
+    .catch(() => {});
+}, 4 * 60 * 1000); // Ping a cada 4 minutos
 
 app.listen(PORT, () => {
-  console.log(`Server optimized for free tier running on port ${PORT}`);
+  console.log(`Servidor otimizado rodando na porta ${PORT}`);
 });
